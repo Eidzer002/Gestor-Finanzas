@@ -1,0 +1,1 @@
+-- Migration 007: exchange_rates + RLS

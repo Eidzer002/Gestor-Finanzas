@@ -1,0 +1,1 @@
+-- Migration 004: transactions + indexes + RLS

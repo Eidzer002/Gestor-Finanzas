@@ -1,0 +1,3 @@
+-- Migration 001: profiles, trigger new user, updated_at function
+-- Aplicada: 2026-05-31
+-- Ver: Supabase dashboard > Database > Migrations
