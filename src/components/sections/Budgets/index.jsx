@@ -1,0 +1,10 @@
+// TODO: Implementar sección Budgets — Fase de migración
+export default function Budgets() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="text-6xl mb-4">📊</div>
+      <h2 className="text-2xl font-bold text-white mb-2">Budgets</h2>
+      <p className="text-slate-400 text-sm">Sección en construcción — próxima fase</p>
+    </div>
+  )
+}
