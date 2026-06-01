@@ -4,6 +4,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // GitHub Pages sirve desde /Gestor-Finanzas/ cuando se usa github.io
+  base: '/Gestor-Finanzas/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -20,9 +22,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('@supabase'))        return 'supabase'
+            if (id.includes('@supabase'))                          return 'supabase'
             if (id.includes('chart.js') || id.includes('react-chartjs-2')) return 'charts'
-            if (id.includes('xlsx') || id.includes('jspdf')) return 'export'
+            if (id.includes('xlsx') || id.includes('jspdf'))       return 'export'
             if (id.includes('react-dom') || id.includes('react/')) return 'vendor'
           }
         },
