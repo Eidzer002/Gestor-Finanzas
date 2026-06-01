@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useData } from '../../../context/DataContext'
 import { formatCurrency, convertToMain } from '../../../lib/utils'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
@@ -36,10 +36,14 @@ export default function Reports() {
   const [startDate, setStartDate] = useState('')
   const [endDate,   setEndDate]   = useState('')
   const [page,      setPage]      = useState(1)
+  // FIX #7: calcular 'now' fuera de useMemo para que no se vuelva stale
+  const [nowStamp,  setNowStamp]  = useState(() => new Date())
+  // Refrescar 'now' cuando el componente se muestra
+  useEffect(() => { setNowStamp(new Date()) }, [period])
   const PER_PAGE = 10
 
   const { start, end } = useMemo(() => {
-    const now = new Date()
+    const now = nowStamp
     switch(period) {
       case 'week': {
         const dow  = now.getDay(), diff = now.getDate() - dow + (dow===0?-6:1)
@@ -55,7 +59,7 @@ export default function Reports() {
       case 'custom':    return { start: startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth(), 1), end: endDate ? new Date(endDate) : new Date() }
       default:          return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth()+1, 0) }
     }
-  }, [period, startDate, endDate])
+  }, [period, startDate, endDate, nowStamp])
 
   const filtered = useMemo(() =>
     transactions.filter(t => { const d = new Date(t.date+'T00:00:00'); return d >= start && d <= end })

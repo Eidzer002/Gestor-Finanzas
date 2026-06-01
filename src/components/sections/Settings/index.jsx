@@ -71,15 +71,17 @@ export default function Settings() {
   const handleReset = async () => {
     if (resetInput !== 'CONFIRMAR') return
     try {
-      await Promise.all([
-        supabase.from('transactions').delete().eq('user_id', user.id),
-        supabase.from('wallets').delete().eq('user_id', user.id),
-        supabase.from('budgets').delete().eq('user_id', user.id),
-        supabase.from('debts').delete().eq('user_id', user.id),
-      ])
-      await loadData(); setResetInput(''); toggle(null)
-      showToast('Datos reiniciados', 'success')
-    } catch(e) { showToast(e.message,'error') }
+      // Eliminar en orden para respetar foreign keys
+      await supabase.from('transactions').delete().eq('user_id', user.id)
+      await supabase.from('budgets').delete().eq('user_id', user.id)
+      await supabase.from('debts').delete().eq('user_id', user.id)
+      await supabase.from('wallets').delete().eq('user_id', user.id)
+      await supabase.from('exchange_rates').delete().eq('user_id', user.id)
+      await loadData()
+      setResetInput('')
+      toggle(null)
+      showToast('Datos reiniciados correctamente', 'success')
+    } catch(e) { showToast(e.message, 'error') }
   }
 
   const Section = ({ id, icon, title, children }) => (
@@ -203,7 +205,7 @@ export default function Settings() {
 
       {/* Zona peligrosa */}
       <Section id="danger" icon="⚠️" title="Zona peligrosa">
-        <p className="text-slate-400 text-sm mb-3">Esto eliminará todas tus transacciones, billeteras, presupuestos y deudas. Las categorías se mantendrán.</p>
+        <p className="text-slate-400 text-sm mb-3">Esto eliminará todas las transacciones, billeteras, presupuestos, deudas y tasas de cambio personalizadas. Las categorías se conservarán.</p>
         <input type="text" value={resetInput} onChange={e=>setResetInput(e.target.value)}
           placeholder='Escribe "CONFIRMAR" para continuar' className="glass-input text-sm mb-3" />
         <button onClick={handleReset} disabled={resetInput!=='CONFIRMAR'}

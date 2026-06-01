@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import { DEFAULT_CATEGORIES, DEFAULT_EXCHANGE_RATES } from '../lib/utils'
@@ -18,7 +18,6 @@ export function DataProvider({ children }) {
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState(null)
 
-  // ─── Cargar todos los datos del usuario ────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -43,7 +42,9 @@ export function DataProvider({ children }) {
         supabase.from('profiles').select('*').eq('id', user.id).single(),
       ])
 
-      const firstError = we || te || be || de || ce || ere
+      // ─── FIX #3: Verificar TODOS los errores individualmente ──────────────
+      const firstError = we || te || be || de || ce || ere || (se && se.code !== 'PGRST116')
+      // PGRST116 = row not found (profile no creado aún, no es error)
       if (firstError) throw firstError
 
       setWallets(w ?? [])
@@ -51,32 +52,36 @@ export function DataProvider({ children }) {
       setBudgets(b ?? [])
       setDebts(d ?? [])
 
-      // Si no tiene categorías, usar las por defecto
+      // ─── FIX #8: No pasar IDs hardcodeados a Supabase ─────────────────────
       if (!c || c.length === 0) {
-        const defaults = DEFAULT_CATEGORIES.map(cat => ({ ...cat, user_id: user.id }))
-        const { data: inserted } = await supabase.from('categories').insert(defaults).select()
-        setCategories(inserted ?? defaults)
+        const defaults = DEFAULT_CATEGORIES.map(({ id: _id, ...rest }) => ({
+          ...rest,
+          user_id: user.id,
+        }))
+        const { data: inserted, error: insertErr } = await supabase
+          .from('categories').insert(defaults).select()
+        if (insertErr) throw insertErr
+        setCategories(inserted ?? [])
       } else {
         setCategories(c)
       }
 
-      // Exchange rates
       if (er && er.length > 0) {
         const rates = {}
         er.forEach(r => { rates[r.currency] = r.rate })
         setExchangeRates({ ...DEFAULT_EXCHANGE_RATES, ...rates })
       }
 
-      // Settings / profile
       if (s) {
         setSettings(s)
-      } else if (!se) {
-        // Crear perfil si no existe
-        const { data: newProfile } = await supabase
+      } else {
+        // Perfil no existe (nuevo usuario) — crearlo
+        const { data: newProfile, error: profileErr } = await supabase
           .from('profiles')
           .insert({ id: user.id, main_currency: 'CUP', pin_enabled: false })
           .select()
           .single()
+        if (profileErr) throw profileErr
         if (newProfile) setSettings(newProfile)
       }
 
@@ -91,22 +96,36 @@ export function DataProvider({ children }) {
   useEffect(() => {
     if (user) loadData()
     else {
-      setWallets([]); setTransactions([]); setBudgets([])
-      setDebts([]); setCategories([]); setLoading(false)
+      setWallets([])
+      setTransactions([])
+      setBudgets([])
+      setDebts([])
+      setCategories([])
+      setExchangeRates(DEFAULT_EXCHANGE_RATES)
+      setSettings({ main_currency: 'CUP', pin_enabled: false, pin_hash: null })
+      setLoading(false)
+      setError(null)
     }
   }, [user, loadData])
 
+  // ─── FIX #5: Memoizar el value para evitar re-renders en cascada ──────────
+  const value = useMemo(() => ({
+    wallets,       setWallets,
+    transactions,  setTransactions,
+    budgets,       setBudgets,
+    debts,         setDebts,
+    categories,    setCategories,
+    exchangeRates, setExchangeRates,
+    settings,      setSettings,
+    loading,       error,           loadData,
+  }), [
+    wallets, transactions, budgets, debts,
+    categories, exchangeRates, settings,
+    loading, error, loadData,
+  ])
+
   return (
-    <DataContext.Provider value={{
-      wallets, setWallets,
-      transactions, setTransactions,
-      budgets, setBudgets,
-      debts, setDebts,
-      categories, setCategories,
-      exchangeRates, setExchangeRates,
-      settings, setSettings,
-      loading, error, loadData,
-    }}>
+    <DataContext.Provider value={value}>
       {children}
     </DataContext.Provider>
   )

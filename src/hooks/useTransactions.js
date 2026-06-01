@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -6,75 +6,84 @@ import { convertBetween } from '../lib/utils'
 
 export function useTransactions() {
   const { user } = useAuth()
-  const { transactions, setTransactions, wallets, setWallets, exchangeRates } = useData()
+  const { transactions, setTransactions, wallets, setWallets, exchangeRates, loadData } = useData()
 
-  // Aplicar efecto en billetera al registrar transacción
-  const applyEffect = useCallback((transaction, walletsSnapshot) => {
-    return walletsSnapshot.map(w => {
-      if (w.id === transaction.wallet_id) {
-        const delta = transaction.type === 'income' ? transaction.amount
-          : transaction.type === 'expense' ? -transaction.amount
-          : -transaction.amount // transfer: resta origen
-        return { ...w, balance: w.balance + delta }
-      }
-      if (transaction.type === 'transfer' && w.id === transaction.wallet_dest_id) {
-        const converted = convertBetween(
-          transaction.amount,
-          walletsSnapshot.find(x => x.id === transaction.wallet_id)?.currency,
-          w.currency,
-          exchangeRates
-        )
-        return { ...w, balance: w.balance + converted }
-      }
-      return w
-    })
-  }, [exchangeRates])
+  // ─── FIX #1: Balance atómico via RPC ──────────────────────────────────────
+  // Reemplaza el patrón read-check-write por UPDATE atómico en Postgres
+  const applyBalanceRPC = useCallback(async (transaction) => {
+    const { type, wallet_id, wallet_dest_id, amount, currency } = transaction
 
-  const revertEffect = useCallback((transaction, walletsSnapshot) => {
-    return walletsSnapshot.map(w => {
-      if (w.id === transaction.wallet_id) {
-        const delta = transaction.type === 'income' ? -transaction.amount
-          : transaction.type === 'expense' ? transaction.amount
-          : transaction.amount // transfer: devuelve al origen
-        return { ...w, balance: w.balance + delta }
-      }
-      if (transaction.type === 'transfer' && w.id === transaction.wallet_dest_id) {
-        const converted = convertBetween(
-          transaction.amount,
-          walletsSnapshot.find(x => x.id === transaction.wallet_id)?.currency,
-          w.currency,
-          exchangeRates
-        )
-        return { ...w, balance: w.balance - converted }
-      }
-      return w
+    if (type === 'transfer') {
+      const src  = wallets.find(w => w.id === wallet_id)
+      const dest = wallets.find(w => w.id === wallet_dest_id)
+      const amountDest = src && dest
+        ? convertBetween(amount, src.currency, dest.currency, exchangeRates)
+        : amount
+
+      const { error } = await supabase.rpc('transfer_wallet_balance', {
+        p_wallet_src_id:  wallet_id,
+        p_wallet_dest_id: wallet_dest_id,
+        p_amount:         amount,
+        p_amount_dest:    amountDest,
+      })
+      if (error) throw error
+
+    } else {
+      const delta = type === 'income' ? amount : -amount
+      const { error } = await supabase.rpc('update_wallet_balance', {
+        p_wallet_id: wallet_id,
+        p_delta:     delta,
+      })
+      if (error) throw error
+    }
+  }, [wallets, exchangeRates])
+
+  const revertBalanceRPC = useCallback(async (transaction) => {
+    const { type, wallet_id, wallet_dest_id, amount, currency } = transaction
+    const src  = wallets.find(w => w.id === wallet_id)
+    const dest = wallet_dest_id ? wallets.find(w => w.id === wallet_dest_id) : null
+    const amountDest = src && dest
+      ? convertBetween(amount, src.currency, dest.currency, exchangeRates)
+      : amount
+
+    const { error } = await supabase.rpc('revert_wallet_balance', {
+      p_wallet_id:      wallet_id,
+      p_wallet_dest_id: wallet_dest_id ?? wallet_id,
+      p_amount:         amount,
+      p_amount_dest:    amountDest,
+      p_type:           type,
     })
-  }, [exchangeRates])
+    if (error) throw error
+  }, [wallets, exchangeRates])
+
+  // ─── FIX #10: Functional updates — elimina 'wallets' de deps ──────────────
+  const syncWalletsFromDB = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at')
+    if (!error && data) setWallets(data)
+  }, [user, setWallets])
 
   const addTransaction = useCallback(async (transactionData) => {
     if (!user) throw new Error('No autenticado')
 
-    const newTransaction = { ...transactionData, user_id: user.id }
     const { data, error } = await supabase
       .from('transactions')
-      .insert(newTransaction)
+      .insert({ ...transactionData, user_id: user.id })
       .select()
       .single()
     if (error) throw error
 
-    // Actualizar saldo de billetera(s) en Supabase
-    const updatedWallets = applyEffect(data, wallets)
-    for (const w of updatedWallets) {
-      const original = wallets.find(x => x.id === w.id)
-      if (original && original.balance !== w.balance) {
-        await supabase.from('wallets').update({ balance: w.balance }).eq('id', w.id)
-      }
-    }
+    // Balance atómico — no depende del estado local
+    await applyBalanceRPC(data)
+    // Sincronizar wallets desde la DB (valores ya actualizados atómicamente)
+    await syncWalletsFromDB()
 
     setTransactions(prev => [data, ...prev])
-    setWallets(updatedWallets)
     return data
-  }, [user, wallets, applyEffect, setTransactions, setWallets])
+  }, [user, applyBalanceRPC, syncWalletsFromDB, setTransactions])
 
   const updateTransaction = useCallback(async (id, transactionData) => {
     if (!user) throw new Error('No autenticado')
@@ -82,28 +91,29 @@ export function useTransactions() {
     const old = transactions.find(t => t.id === id)
     if (!old) throw new Error('Transacción no encontrada')
 
-    // Revertir efecto anterior, aplicar nuevo
-    const reverted = revertEffect(old, wallets)
+    // 1. Revertir efecto anterior atómicamente
+    await revertBalanceRPC(old)
+
+    // 2. Actualizar la transacción
     const { data, error } = await supabase
       .from('transactions')
       .update(transactionData)
       .eq('id', id)
       .select()
       .single()
-    if (error) throw error
-
-    const updatedWallets = applyEffect(data, reverted)
-    for (const w of updatedWallets) {
-      const original = wallets.find(x => x.id === w.id)
-      if (original && original.balance !== w.balance) {
-        await supabase.from('wallets').update({ balance: w.balance }).eq('id', w.id)
-      }
+    if (error) {
+      // Si falla la actualización, revertir el revert
+      await applyBalanceRPC(old)
+      throw error
     }
 
+    // 3. Aplicar nuevo efecto atómicamente
+    await applyBalanceRPC(data)
+    await syncWalletsFromDB()
+
     setTransactions(prev => prev.map(t => t.id === id ? data : t))
-    setWallets(updatedWallets)
     return data
-  }, [user, transactions, wallets, applyEffect, revertEffect, setTransactions, setWallets])
+  }, [user, transactions, applyBalanceRPC, revertBalanceRPC, syncWalletsFromDB, setTransactions])
 
   const deleteTransaction = useCallback(async (id) => {
     if (!user) throw new Error('No autenticado')
@@ -114,61 +124,57 @@ export function useTransactions() {
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (error) throw error
 
-    const updatedWallets = revertEffect(transaction, wallets)
-    for (const w of updatedWallets) {
-      const original = wallets.find(x => x.id === w.id)
-      if (original && original.balance !== w.balance) {
-        await supabase.from('wallets').update({ balance: w.balance }).eq('id', w.id)
-      }
-    }
+    await revertBalanceRPC(transaction)
+    await syncWalletsFromDB()
 
     setTransactions(prev => prev.filter(t => t.id !== id))
-    setWallets(updatedWallets)
-  }, [user, transactions, wallets, revertEffect, setTransactions, setWallets])
+  }, [user, transactions, revertBalanceRPC, syncWalletsFromDB, setTransactions])
 
-  // Generar transacciones recurrentes pendientes
+  // ─── FIX #6: Recargar datos tras generar recurrentes ──────────────────────
   const checkRecurring = useCallback(async () => {
     if (!user) return
     const today = new Date().toISOString().split('T')[0]
-    const recurring = transactions.filter(t => t.recurring && t.next_date && t.next_date <= today)
+    const pending = transactions.filter(t => t.recurring && t.next_date && t.next_date <= today)
+    if (pending.length === 0) return
 
-    for (const t of recurring) {
+    for (const t of pending) {
       let nextDate = t.next_date
-      // Generar todas las ocurrencias hasta hoy (no solo una)
       while (nextDate <= today) {
         const newT = {
-          user_id: user.id,
-          type: t.type,
-          wallet_id: t.wallet_id,
-          wallet_dest_id: t.wallet_dest_id,
-          amount: t.amount,
-          currency: t.currency,
-          category_id: t.category_id,
-          description: t.description,
-          date: nextDate,
-          recurring: true,
-          frequency: t.frequency,
-          notes: t.notes,
-          tags: t.tags,
+          user_id:         user.id,
+          type:            t.type,
+          wallet_id:       t.wallet_id,
+          wallet_dest_id:  t.wallet_dest_id,
+          amount:          t.amount,
+          currency:        t.currency,
+          category_id:     t.category_id,
+          description:     t.description,
+          date:            nextDate,
+          recurring:       true,
+          frequency:       t.frequency,
+          notes:           t.notes,
+          tags:            t.tags,
         }
 
-        // Calcular próxima fecha
         const d = new Date(nextDate + 'T00:00:00')
-        if (t.frequency === 'weekly') d.setDate(d.getDate() + 7)
-        else if (t.frequency === 'biweekly') d.setDate(d.getDate() + 14)
-        else d.setMonth(d.getMonth() + 1) // monthly por defecto
+        if      (t.frequency === 'weekly')    d.setDate(d.getDate() + 7)
+        else if (t.frequency === 'biweekly')  d.setDate(d.getDate() + 14)
+        else                                   d.setMonth(d.getMonth() + 1)
 
         const newNextDate = d.toISOString().split('T')[0]
         newT.next_date = newNextDate
 
-        await supabase.from('transactions').insert(newT)
+        const { data: inserted } = await supabase.from('transactions').insert(newT).select().single()
+        if (inserted) await applyBalanceRPC(inserted)
+
         nextDate = newNextDate
       }
-
-      // Actualizar next_date en la transacción original
       await supabase.from('transactions').update({ next_date: nextDate }).eq('id', t.id)
     }
-  }, [user, transactions])
+
+    // Recargar todo después de generar recurrentes
+    await loadData()
+  }, [user, transactions, applyBalanceRPC, loadData])
 
   return { addTransaction, updateTransaction, deleteTransaction, checkRecurring }
 }
