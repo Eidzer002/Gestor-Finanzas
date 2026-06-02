@@ -5,7 +5,7 @@ import { useDebts } from '../../../hooks/useDebts'
 import { formatCurrency } from '../../../lib/utils'
 
 const STATUS_LABELS = { pending:'Pendiente', partial:'Parcial', paid:'Pagado' }
-const STATUS_COLORS = { pending:'text-orange-400 bg-orange-500/20', partial:'text-blue-400 bg-blue-500/20', paid:'text-green-400 bg-green-500/20' }
+const STATUS_COLORS = { pending:'text-yellow-400 bg-yellow-500/15', partial:'text-blue-400 bg-blue-500/15', paid:'text-income bg-income/15' }
 const DEBT_TYPE_ICONS = { cash:'💵', goods:'📦', service:'🔧', other:'📋' }
 
 export default function Debts() {

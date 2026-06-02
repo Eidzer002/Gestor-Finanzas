@@ -34,7 +34,7 @@ export default function Budgets() {
   const globalPct = totalBudgeted > 0 ? (totalSpent/totalBudgeted)*100 : 0
 
   const barColor = (pct) => pct>=100?'bg-red-500': pct>=80?'bg-orange-500': pct>=60?'bg-yellow-500':'bg-green-500'
-  const pctColor = (pct) => pct>=100?'text-red-400': pct>=80?'text-orange-400':'text-green-400'
+  const pctColor = (pct) => pct>=100?'text-expense': pct>=80?'text-orange-400':'text-income'
 
   const handleDelete = (id) => {
     showDeleteModal('¿Eliminar este presupuesto?', async () => {
@@ -60,7 +60,7 @@ export default function Budgets() {
             </div>
             <div>
               <p className="text-xs text-slate-400">Ejecución</p>
-              <p className={`font-bold text-sm ${pctColor(globalPct)}`}>{globalPct.toFixed(0)}%</p>
+              <p className={`font-bold text-sm num ${pctColor(globalPct)}`}>{globalPct.toFixed(0)}%</p>
             </div>
           </div>
           <div className="progress-bar h-2.5">

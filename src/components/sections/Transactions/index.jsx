@@ -100,7 +100,7 @@ export default function Transactions() {
         </div>
         <div className="glass-card p-3 text-center">
           <p className="text-xs text-slate-400 mb-0.5">Balance</p>
-          <p className={`font-bold text-sm ${totalIncome-totalExpense>=0?'text-blue-400':'text-orange-400'}`}>{formatCurrency(totalIncome-totalExpense, main)}</p>
+          <p className={`font-bold text-sm num ${totalIncome-totalExpense>=0?'text-accent':'text-expense'}`}>{formatCurrency(totalIncome-totalExpense, main)}</p>
         </div>
       </div>
 
@@ -146,7 +146,7 @@ export default function Transactions() {
             const dayNet = dayI - dayE
             return (
               <div key={date} className="glass-card p-4">
-                <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/10">
+                <div className="flex justify-between items-center mb-3 pb-2" style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
                   <span className="font-medium text-slate-300 capitalize text-sm">{dateLabel(date)}</span>
                   <span className={`text-sm ${dayNet>=0?'text-green-400':'text-red-400'}`}>{dayNet>=0?'+':''}{formatCurrency(Math.abs(dayNet), main)}</span>
                 </div>
@@ -157,7 +157,7 @@ export default function Transactions() {
                     const isI = t.type==='income', isE = t.type==='expense'
                     return (
                       <div key={t.id} className="flex items-center gap-3 group">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0 ${isI?'bg-green-500/20':isE?'bg-red-500/20':'bg-blue-500/20'}`}>
+                        <div className={`tx-icon ${isI?'tx-icon-income':isE?'tx-icon-expense':'tx-icon-transfer'}`}>
                           {cat?.icon || '💰'}
                         </div>
                         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openModal('transaction',{editId:t.id})}>
@@ -169,7 +169,7 @@ export default function Transactions() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className={`text-sm font-bold ${isI?'text-income':isE?'text-expense':'text-transfer'}`}>
+                          <p className={`text-sm font-bold num ${isI?'text-income':isE?'text-expense':'text-transfer'}`}>
                             {isI?'+':isE?'-':''}{formatCurrency(t.amount, t.currency)}
                           </p>
                         </div>

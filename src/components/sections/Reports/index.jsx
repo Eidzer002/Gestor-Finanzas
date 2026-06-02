@@ -233,7 +233,7 @@ export default function Reports() {
                     <p className="text-sm truncate">{t.description||cat?.name||'Transacción'}</p>
                     <p className="text-xs text-slate-400">{t.date} • {w?.name||'?'}</p>
                   </div>
-                  <p className={`text-sm font-bold flex-shrink-0 ${isI?'text-income':isE?'text-expense':'text-transfer'}`}>
+                  <p className={`text-sm font-bold flex-shrink-0 num ${isI?'text-income':isE?'text-expense':'text-transfer'}`}>
                     {isI?'+':isE?'-':''}{formatCurrency(t.amount, t.currency)}
                   </p>
                 </div>
