@@ -4,13 +4,13 @@ Gestor de finanzas del hogar — React + Vite + Supabase
 
 ## Stack
 
-- **Frontend:** React 18 + Vite
+- **Frontend:** React 19 + Vite
 - **Estilos:** Tailwind CSS v3
-- **Auth:** Supabase Auth (Google OAuth)
+- **Auth:** Supabase Auth (email/password)
 - **Base de datos:** Supabase (PostgreSQL + RLS por usuario)
 - **Gráficas:** Chart.js + react-chartjs-2
 - **Exportación:** SheetJS (Excel) + jsPDF (PDF)
-- **Deploy:** Vercel
+- **Deploy:** Netlify
 
 ## Inicio rápido
 
@@ -53,7 +53,8 @@ src/
 ## Fases de desarrollo
 
 - [x] **Fase 1** — Scaffolding + estructura + contextos + hooks
-- [ ] **Fase 2** — Supabase: schema, RLS, Google OAuth
-- [ ] **Fase 3** — Migración de secciones desde el HTML original
-- [ ] **Fase 4** — Corrección de bugs + mejoras
-- [ ] **Fase 5** — Deploy en Vercel
+- [x] **Fase 2** — Supabase: schema, RLS, auth email/password
+- [x] **Fase 3** — Migración completa de todas las secciones
+- [x] **Fase 4** — Auditoría completa: 11 bugs y malas prácticas corregidos
+- [x] **Fase 5** — Deploy en Netlify
+- [ ] **Fase 6** — Rediseño de interfaz (inspirado en Copilot Money, Midnight Banking, Mercury) — en curso
